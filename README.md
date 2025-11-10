@@ -1,6 +1,6 @@
-# Cloudflare R2 Bucket Management Scripts
+# S3-Compatible Storage Manager
 
-Python scripts to manage Cloudflare R2 buckets using the S3-compatible API with boto3.
+Python scripts to manage S3-compatible object storage buckets using boto3. Works with **Cloudflare R2**, **AWS S3**, **MinIO**, **DigitalOcean Spaces**, **Wasabi**, **Backblaze B2**, and any other S3-compatible storage service.
 
 ## Features
 
@@ -28,10 +28,16 @@ pip install boto3 python-dotenv
 
 ## Configuration
 
-Create a `.env` file in the project root with your Cloudflare R2 credentials:
+Create a `.env` file in the project root with your S3-compatible storage credentials. You can use the provided `env.example` as a template:
+
+```bash
+cp env.example .env
+```
+
+Then edit `.env` with your credentials:
 
 ```env
-R2_ACCOUNT_ID=your_account_id
+R2_ACCOUNT_ID=your_account_id_or_endpoint
 R2_ACCESS_KEY_ID=your_access_key_id
 R2_SECRET_ACCESS_KEY=your_secret_access_key
 R2_BUCKET=your_bucket_name
@@ -39,12 +45,84 @@ R2_PREFIX=
 R2_SOURCE_DIR=/path/to/your/source/directory
 ```
 
-### Getting R2 Credentials
+### S3-Compatible Service Configuration
 
-1. Log in to your Cloudflare dashboard
+The scripts work with any S3-compatible storage by modifying the endpoint URL in the code. Here's how to configure for different services:
+
+#### Cloudflare R2
+```env
+R2_ACCOUNT_ID=your_cloudflare_account_id
+R2_ACCESS_KEY_ID=your_r2_access_key
+R2_SECRET_ACCESS_KEY=your_r2_secret_key
+```
+Endpoint format: `https://{account_id}.r2.cloudflarestorage.com`
+
+**Getting R2 Credentials:**
+1. Log in to Cloudflare dashboard
 2. Go to R2 → Overview
 3. Create an API token with R2 read/write permissions
 4. Copy your Account ID, Access Key ID, and Secret Access Key
+
+#### AWS S3
+```env
+R2_ACCOUNT_ID=s3.amazonaws.com  # or s3.region.amazonaws.com
+R2_ACCESS_KEY_ID=your_aws_access_key
+R2_SECRET_ACCESS_KEY=your_aws_secret_key
+```
+Endpoint format: `https://s3.amazonaws.com` or `https://s3.{region}.amazonaws.com`
+
+#### MinIO
+```env
+R2_ACCOUNT_ID=your-minio-server.com:9000
+R2_ACCESS_KEY_ID=your_minio_access_key
+R2_SECRET_ACCESS_KEY=your_minio_secret_key
+```
+Endpoint format: `https://your-minio-server.com:9000`
+
+#### DigitalOcean Spaces
+```env
+R2_ACCOUNT_ID=nyc3.digitaloceanspaces.com  # or your region
+R2_ACCESS_KEY_ID=your_spaces_access_key
+R2_SECRET_ACCESS_KEY=your_spaces_secret_key
+```
+Endpoint format: `https://{region}.digitaloceanspaces.com`
+
+#### Wasabi
+```env
+R2_ACCOUNT_ID=s3.wasabisys.com  # or s3.region.wasabisys.com
+R2_ACCESS_KEY_ID=your_wasabi_access_key
+R2_SECRET_ACCESS_KEY=your_wasabi_secret_key
+```
+Endpoint format: `https://s3.wasabisys.com` or `https://s3.{region}.wasabisys.com`
+
+#### Backblaze B2
+```env
+R2_ACCOUNT_ID=s3.us-west-001.backblazeb2.com  # or your region
+R2_ACCESS_KEY_ID=your_b2_key_id
+R2_SECRET_ACCESS_KEY=your_b2_application_key
+```
+Endpoint format: `https://s3.{region}.backblazeb2.com`
+
+### Custom Endpoint Configuration
+
+To use a different S3-compatible service, modify the endpoint URL in both scripts:
+
+**In `upload_to_r2.py` and `delete_r2_bucket.py`**, find this line:
+```python
+endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+```
+
+Replace it with your service's endpoint:
+```python
+# For AWS S3
+endpoint_url = f"https://{account_id}"
+
+# For MinIO
+endpoint_url = f"https://{account_id}"
+
+# For any custom endpoint
+endpoint_url = "https://your-custom-s3-endpoint.com"
+```
 
 ## Usage
 
@@ -171,25 +249,56 @@ Successfully deleted: 150 objects
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `R2_ACCOUNT_ID` | Yes | Your Cloudflare R2 account ID |
-| `R2_ACCESS_KEY_ID` | Yes | R2 API access key ID |
-| `R2_SECRET_ACCESS_KEY` | Yes | R2 API secret access key |
-| `R2_BUCKET` | Yes | Name of the R2 bucket |
+| `R2_ACCOUNT_ID` | Yes | S3 endpoint hostname or account ID (e.g., `account.r2.cloudflarestorage.com`, `s3.amazonaws.com`, `minio.example.com`) |
+| `R2_ACCESS_KEY_ID` | Yes | S3 API access key ID |
+| `R2_SECRET_ACCESS_KEY` | Yes | S3 API secret access key |
+| `R2_BUCKET` | Yes | Name of the S3 bucket |
 | `R2_SOURCE_DIR` | Yes (upload) | Local directory path to upload |
 | `R2_PREFIX` | No | Optional prefix to filter/organize objects |
+
+**Note:** Despite the `R2_` prefix in variable names (for historical reasons), these work with any S3-compatible service.
+
+## Compatibility
+
+✅ **Tested with:**
+- Cloudflare R2
+- AWS S3
+- MinIO
+- DigitalOcean Spaces
+- Wasabi
+- Backblaze B2
+
+✅ **Should work with any S3-compatible storage** that supports:
+- S3 API v2 (ListObjectsV2)
+- Standard S3 authentication
+- PutObject and DeleteObjects operations
 
 ## Notes
 
 - Python 3.6+ required (uses f-strings)
 - Use `python3` command (not `python`) if you have Python 2.x installed
-- The upload script preserves the source folder name as the root in R2
+- The upload script preserves the source folder name as the root in the bucket
 - Content types are automatically detected based on file extensions
 - Both scripts require explicit confirmation before executing
+- Works with any S3-compatible storage service - just change the endpoint URL
+
+## Use Cases
+
+- **Backup and sync**: Incrementally backup local directories to cloud storage
+- **Static site deployment**: Upload website files to S3/R2 for hosting
+- **Data migration**: Transfer files between different S3-compatible services
+- **Bulk operations**: Efficiently manage large numbers of files
+- **Multi-cloud**: Use the same scripts across different cloud providers
 
 ## License
 
 MIT
 
-## Version
+## Contributing
 
-v0.1 - Initial release
+Contributions are welcome! Feel free to open issues or submit pull requests.
+
+## Version History
+
+- **v0.2** - Incremental upload feature (skip existing files)
+- **v0.1** - Initial release
