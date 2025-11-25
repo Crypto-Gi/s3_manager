@@ -195,17 +195,44 @@ def main():
     print(f"Bucket: {bucket_name}")
     print(f"{'='*60}\n")
     
-    # Define move operations
-    moves = [
-        {
-            'source': 'source/ecos-release-notes/',
-            'destination': 'source/HPE Aruba/ecos-release-notes/'
-        },
-        {
-            'source': 'source/orch-release-notes/',
-            'destination': 'source/HPE Aruba/orch-release-notes/'
-        }
-    ]
+    # Read move operations from environment variables
+    moves = []
+    
+    # Check for move operations in .env (MOVE_SOURCE_1, MOVE_DEST_1, etc.)
+    i = 1
+    while True:
+        source = os.getenv(f'MOVE_SOURCE_{i}')
+        destination = os.getenv(f'MOVE_DEST_{i}')
+        
+        if source and destination:
+            moves.append({
+                'source': source,
+                'destination': destination
+            })
+            i += 1
+        else:
+            break
+    
+    # If no moves defined in .env, use default example moves
+    if not moves:
+        print("No move operations found in .env file.")
+        print("Using default example moves (you can customize these):\n")
+        moves = [
+            {
+                'source': 'source/ecos-release-notes/',
+                'destination': 'source/HPE Aruba/ecos-release-notes/'
+            },
+            {
+                'source': 'source/orch-release-notes/',
+                'destination': 'source/HPE Aruba/orch-release-notes/'
+            }
+        ]
+        print("To customize, add to your .env file:")
+        print("MOVE_SOURCE_1=your/source/path/")
+        print("MOVE_DEST_1=your/destination/path/")
+        print("MOVE_SOURCE_2=another/source/")
+        print("MOVE_DEST_2=another/destination/")
+        print()
     
     print("Planned moves:")
     for i, move in enumerate(moves, 1):
