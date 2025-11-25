@@ -41,6 +41,15 @@ Python scripts to manage S3-compatible object storage buckets using boto3. Works
 - **Detailed preview**: Shows matching files before deletion
 - **Progress tracking**: Reports each deleted file and any errors
 
+### 🔄 Bucket Migration Script (`migrate_bucket.py`)
+- **Server-side copy**: Copy between buckets without downloading (fast!)
+- **No bandwidth usage**: Data never leaves the cloud provider's network
+- **Preserve structure**: Maintains all folder hierarchies and files
+- **Copy or migrate**: Option to delete from source after copying
+- **Prefix filtering**: Migrate only specific directories
+- **Progress tracking**: Shows each object being copied
+- **Error handling**: Reports failures and continues with remaining objects
+
 ## Prerequisites
 
 ```bash
@@ -273,6 +282,57 @@ DELETE_DRY_RUN=true
 - Requires typing 'DELETE' (not just 'yes')
 - Detailed progress reporting
 
+### Migrate Between Buckets
+
+Copy or migrate all objects from one bucket to another **without downloading** (server-side copy):
+
+```bash
+python3 migrate_bucket.py
+```
+
+Or use the helper script:
+
+```bash
+./run_migrate.sh
+```
+
+**How it works:**
+- Lists all objects in source bucket
+- Copies each object directly to destination bucket (server-side)
+- Optionally deletes from source after successful copy
+- No data transfer through your computer (fast and free!)
+
+**Configuration via .env:**
+```env
+# Source and destination buckets
+MIGRATE_SOURCE_BUCKET=old-bucket-name
+MIGRATE_DEST_BUCKET=new-bucket-name
+
+# Optional: only migrate specific directory
+MIGRATE_PREFIX=source/specific-folder/
+
+# Optional: delete from source after copy (true migration)
+MIGRATE_DELETE_SOURCE=false  # Set to true for move instead of copy
+```
+
+**Use cases:**
+- **Rename bucket**: Copy to new bucket with desired name
+- **Backup bucket**: Create a copy in another bucket
+- **Reorganize**: Migrate to bucket with better structure
+- **Consolidate**: Merge multiple buckets into one
+
+**Advantages:**
+- ⚡ **Fast**: Server-side copy (no download/upload)
+- 💰 **Free**: No bandwidth charges
+- 🔒 **Safe**: Preserves all metadata and structure
+- 📊 **Progress tracking**: See each file being copied
+
+**Safety features:**
+- Shows preview of objects to migrate
+- Requires typing 'MIGRATE' to confirm
+- Copy mode by default (keeps source intact)
+- Detailed progress and error reporting
+
 ## How It Works
 
 ### Upload Process
@@ -391,6 +451,10 @@ Successfully deleted: 150 objects
 | `DELETE_EXTENSIONS` | No | Comma-separated file extensions to delete (e.g., `.DS_Store,.tmp`) |
 | `DELETE_PATTERNS` | No | Comma-separated patterns to match in filenames (e.g., `backup,temp`) |
 | `DELETE_DRY_RUN` | No | Set to `true` for preview mode (no actual deletion) |
+| `MIGRATE_SOURCE_BUCKET` | No | Source bucket name for migration |
+| `MIGRATE_DEST_BUCKET` | No | Destination bucket name for migration |
+| `MIGRATE_PREFIX` | No | Optional prefix to filter objects for migration |
+| `MIGRATE_DELETE_SOURCE` | No | Set to `true` to delete from source after copy (default: `false`) |
 
 **Note:** Despite the `R2_` prefix in variable names (for historical reasons), these work with any S3-compatible service.
 
@@ -457,6 +521,7 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 ## Version History
 
+- **v0.5** - Bucket migration script (server-side copy between buckets)
 - **v0.4** - Pattern-based deletion script (delete by extension/pattern)
 - **v0.3** - Move directory script (relocate directories within bucket)
 - **v0.2** - Incremental upload feature (skip existing files)
