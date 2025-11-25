@@ -32,6 +32,15 @@ Python scripts to manage S3-compatible object storage buckets using boto3. Works
 - **Progress tracking**: Shows each object being moved
 - **Error handling**: Reports failures and continues with remaining objects
 
+### 🎯 Pattern Deletion Script (`delete_by_pattern.py`)
+- **Selective deletion**: Delete files by extension or filename pattern
+- **Flexible filtering**: Combine extensions and patterns for precise targeting
+- **Dry run mode**: Preview what will be deleted without actually deleting
+- **Batch operations**: Efficiently deletes up to 1000 objects per request
+- **Safety confirmation**: Requires typing 'DELETE' to proceed
+- **Detailed preview**: Shows matching files before deletion
+- **Progress tracking**: Reports each deleted file and any errors
+
 ## Prerequisites
 
 ```bash
@@ -212,16 +221,57 @@ Or use the helper script:
 - Move `source/ecos-release-notes/` → `source/HPE Aruba/ecos-release-notes/`
 - Move `source/orch-release-notes/` → `source/HPE Aruba/orch-release-notes/`
 
-**Customization:**
-Edit the `moves` list in `main()` function to define your own move operations:
-```python
-moves = [
-    {
-        'source': 'old/path/',
-        'destination': 'new/path/'
-    }
-]
+**Configuration via .env:**
+```env
+MOVE_SOURCE_1=source/old-folder/
+MOVE_DEST_1=source/new-folder/
+MOVE_SOURCE_2=another/old-path/
+MOVE_DEST_2=another/new-path/
 ```
+
+### Delete Files by Pattern
+
+Delete specific files by extension or filename pattern:
+
+```bash
+python3 delete_by_pattern.py
+```
+
+Or use the helper script:
+
+```bash
+./run_delete_pattern.sh
+```
+
+**How it works:**
+- Scans bucket for files matching your criteria
+- Shows preview of files to be deleted
+- Requires typing 'DELETE' to confirm
+- Deletes matching files in batches
+
+**Configuration via .env:**
+```env
+# Delete by file extension
+DELETE_EXTENSIONS=.DS_Store,.docx,.tmp,.bak
+
+# Delete by filename pattern (files containing these words)
+DELETE_PATTERNS=backup,temp,old,cache
+
+# Enable dry run mode (preview only, no deletion)
+DELETE_DRY_RUN=true
+```
+
+**Examples:**
+- Remove all `.DS_Store` files: `DELETE_EXTENSIONS=.DS_Store`
+- Remove backup files: `DELETE_PATTERNS=backup,bak`
+- Remove temp files: `DELETE_EXTENSIONS=.tmp,.temp` + `DELETE_PATTERNS=temp`
+- Preview mode: `DELETE_DRY_RUN=true`
+
+**Safety features:**
+- Dry run mode for safe testing
+- Shows preview of all matching files
+- Requires typing 'DELETE' (not just 'yes')
+- Detailed progress reporting
 
 ## How It Works
 
@@ -251,6 +301,16 @@ moves = [
    - Copies to new location (preserving path structure)
    - Deletes original after successful copy
 5. Reports detailed statistics (moved count, errors)
+
+### Pattern Deletion Process
+
+1. Reads deletion criteria from .env (extensions and patterns)
+2. Scans bucket for all objects
+3. Filters objects matching criteria
+4. Shows preview of matching files
+5. Asks for confirmation (must type 'DELETE')
+6. Deletes matching files in batches
+7. Reports detailed statistics (deleted count, errors)
 
 ## Examples
 
@@ -326,6 +386,11 @@ Successfully deleted: 150 objects
 | `R2_BUCKET` | Yes | Name of the S3 bucket |
 | `R2_SOURCE_DIR` | Yes (upload) | Local directory path to upload |
 | `R2_PREFIX` | No | Optional prefix to filter/organize objects |
+| `MOVE_SOURCE_N` | No | Source directory for move operation (N=1,2,3...) |
+| `MOVE_DEST_N` | No | Destination directory for move operation (N=1,2,3...) |
+| `DELETE_EXTENSIONS` | No | Comma-separated file extensions to delete (e.g., `.DS_Store,.tmp`) |
+| `DELETE_PATTERNS` | No | Comma-separated patterns to match in filenames (e.g., `backup,temp`) |
+| `DELETE_DRY_RUN` | No | Set to `true` for preview mode (no actual deletion) |
 
 **Note:** Despite the `R2_` prefix in variable names (for historical reasons), these work with any S3-compatible service.
 
@@ -392,6 +457,7 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 ## Version History
 
+- **v0.4** - Pattern-based deletion script (delete by extension/pattern)
 - **v0.3** - Move directory script (relocate directories within bucket)
 - **v0.2** - Incremental upload feature (skip existing files)
 - **v0.1** - Initial release
