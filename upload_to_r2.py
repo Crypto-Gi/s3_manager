@@ -9,6 +9,7 @@ Run with: python3 upload_to_r2.py
 
 import os
 import sys
+import argparse
 from pathlib import Path
 import boto3
 from botocore.exceptions import ClientError
@@ -129,7 +130,7 @@ def build_local_file_list(source_dir, source_folder_name, prefix=''):
     print(f"Found {len(local_files)} local files\n")
     return local_files
 
-def upload_directory(source_dir, bucket_name, prefix=''):
+def upload_directory(source_dir, bucket_name, prefix='', dry_run=False):
     """
     Upload all files from source directory to R2 bucket maintaining hierarchy.
     Only uploads files that don't already exist in the bucket.
@@ -138,6 +139,7 @@ def upload_directory(source_dir, bucket_name, prefix=''):
         source_dir: Local directory path to upload
         bucket_name: Name of the R2 bucket
         prefix: Optional prefix to add to all uploaded objects
+        dry_run: If True, simulate upload without making changes
     """
     s3_client = get_r2_client()
     source_path = Path(source_dir)
@@ -154,7 +156,7 @@ def upload_directory(source_dir, bucket_name, prefix=''):
     source_folder_name = source_path.name
     
     print(f"{'='*60}")
-    print(f"Incremental Upload - Skipping existing files")
+    print(f"Incremental Upload - Skipping existing files{' (DRY RUN)' if dry_run else ''}")
     print(f"{'='*60}\n")
     
     # Step 1: Get existing objects from R2
@@ -209,21 +211,28 @@ def upload_directory(source_dir, bucket_name, prefix=''):
             # Determine content type
             content_type = get_content_type(local_file_path)
             
-            print(f"Uploading: {relative_path} -> {s3_key}")
-            print(f"  Size: {format_size(file_size)}, Type: {content_type}")
-            
-            # Upload the file
-            with open(local_file_path, 'rb') as file_data:
-                s3_client.put_object(
-                    Bucket=bucket_name,
-                    Key=s3_key,
-                    Body=file_data,
-                    ContentType=content_type
-                )
-            
-            uploaded_count += 1
-            uploaded_size += file_size
-            print(f"  ✓ Uploaded successfully\n")
+            if dry_run:
+                print(f"[DRY RUN] Would upload: {relative_path} -> {s3_key}")
+                print(f"  Size: {format_size(file_size)}, Type: {content_type}")
+                uploaded_count += 1
+                uploaded_size += file_size
+                print(f"  ✓ Simulation successful\n")
+            else:
+                print(f"Uploading: {relative_path} -> {s3_key}")
+                print(f"  Size: {format_size(file_size)}, Type: {content_type}")
+                
+                # Upload the file
+                with open(local_file_path, 'rb') as file_data:
+                    s3_client.put_object(
+                        Bucket=bucket_name,
+                        Key=s3_key,
+                        Body=file_data,
+                        ContentType=content_type
+                    )
+                
+                uploaded_count += 1
+                uploaded_size += file_size
+                print(f"  ✓ Uploaded successfully\n")
             
         except ClientError as e:
             error_count += 1
@@ -234,8 +243,8 @@ def upload_directory(source_dir, bucket_name, prefix=''):
     
     # Print summary
     print(f"{'='*60}")
-    print(f"Upload complete!")
-    print(f"Successfully uploaded: {uploaded_count} files ({format_size(uploaded_size)})")
+    print(f"Upload complete!{' (DRY RUN)' if dry_run else ''}")
+    print(f"Successfully {('simulated' if dry_run else 'uploaded')}: {uploaded_count} files ({format_size(uploaded_size)})")
     print(f"Skipped (already exist): {skipped_count} files ({format_size(total_skip_size)})")
     if error_count > 0:
         print(f"Errors encountered: {error_count} files")
@@ -254,34 +263,46 @@ def format_size(bytes_size):
 
 def main():
     """Main function to execute the upload script."""
-    bucket_name = os.getenv('R2_BUCKET')
-    source_dir = os.getenv('R2_SOURCE_DIR')
-    prefix = os.getenv('R2_PREFIX', '')
+    
+    # Parse CLI arguments
+    parser = argparse.ArgumentParser(description="Upload directory to Cloudflare R2 bucket.")
+    parser.add_argument("--dry-run", action="store_true", help="Simulate upload without actual execution")
+    parser.add_argument("--source", type=str, help="Source directory path (overrides R2_SOURCE_DIR)")
+    parser.add_argument("--destination", type=str, help="Destination folder in bucket (overrides R2_PREFIX)")
+    parser.add_argument("--bucket", type=str, help="Target R2 bucket name (overrides R2_BUCKET)")
+    
+    args = parser.parse_args()
+    
+    # Determine values (CLI args > Env vars)
+    bucket_name = args.bucket or os.getenv('R2_BUCKET')
+    source_dir = args.source or os.getenv('R2_SOURCE_DIR')
+    prefix = args.destination if args.destination is not None else os.getenv('R2_PREFIX', '')
     
     if not bucket_name:
-        print("Error: R2_BUCKET not set in .env file")
+        print("Error: Bucket name not specified. Use --bucket or set R2_BUCKET in .env")
         sys.exit(1)
     
     if not source_dir:
-        print("Error: R2_SOURCE_DIR not set in .env file")
+        print("Error: Source directory not specified. Use --source or set R2_SOURCE_DIR in .env")
         sys.exit(1)
     
-    # Confirmation prompt
+    # Confirmation prompt (skip if dry-run, optional)
     print(f"\n{'='*60}")
     print(f"Upload Configuration:")
     print(f"  Source: {source_dir}")
     print(f"  Bucket: {bucket_name}")
     if prefix:
         print(f"  Prefix: {prefix}")
+    print(f"  Mode: {'DRY RUN' if args.dry_run else 'LIVE UPLOAD'}")
     print(f"{'='*60}\n")
     
-    confirmation = input("Start upload? (yes/no): ")
+    if not args.dry_run:
+        confirmation = input("Start upload? (yes/no): ")
+        if confirmation.lower() != 'yes':
+            print("Operation cancelled.")
+            sys.exit(0)
     
-    if confirmation.lower() != 'yes':
-        print("Operation cancelled.")
-        sys.exit(0)
-    
-    upload_directory(source_dir, bucket_name, prefix)
+    upload_directory(source_dir, bucket_name, prefix, args.dry_run)
 
 if __name__ == "__main__":
     main()
