@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.5] - 2025-01-10
+
+### Changed
+- **Upload script**: Changed duplicate detection from path-based to filename-based
+- Now checks if filename exists anywhere in bucket, regardless of path
+- If `readme.txt` exists anywhere in bucket, all local `readme.txt` files are skipped
+- Memory cleanup after determining upload list for better efficiency
+
+### Technical Details
+- `get_existing_objects()` now extracts basenames instead of full paths
+- Comparison uses `os.path.basename()` for filename-only matching
+- Clears filename set from memory after determining files to upload
+- Updated documentation to clarify filename-based duplicate detection behavior
+
+### Breaking Changes
+- Duplicate detection behavior changed: previously compared full paths, now compares filenames only
+- This may result in different files being skipped compared to v0.4
+
 ## [v0.3] - 2024-11-25
 
 ### Added

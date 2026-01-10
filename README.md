@@ -5,13 +5,14 @@ Python scripts to manage S3-compatible object storage buckets using boto3. Works
 ## Features
 
 ### 📤 Upload Script (`upload_to_r2.py`)
-- **Incremental uploads**: Only uploads new files, skips existing ones
+- **Incremental uploads**: Only uploads new files, skips existing ones (filename-based duplicate detection)
+- **Filename-based detection**: Checks if filename exists anywhere in bucket, regardless of path
 - **Recursive upload**: Uploads entire directory structure
 - **Hierarchy preservation**: Maintains folder structure in the bucket
 - **Content-type detection**: Automatically sets correct MIME types based on file extensions
 - **Pre-scan analysis**: Shows what will be uploaded vs skipped before starting
 - **Progress tracking**: Shows each file being uploaded with size and type
-- **Memory efficient**: Uses ~30MB for 100K files, ~750MB for 5M files
+- **Memory efficient**: Uses ~30MB for 100K files, ~750MB for 5M files, clears memory after analysis
 - **Error handling**: Reports failures and continues with remaining files
 - **Detailed statistics**: Shows uploaded count, skipped count, and sizes
 
@@ -174,15 +175,16 @@ Or use the helper script:
 - Local path: `/Users/username/Downloads/source`
 - Bucket structure: `bucket-name/source/folder1/file.txt`
 - The source folder name is automatically included as the root folder in the bucket
-- Only new files are uploaded; existing files are skipped (incremental upload)
+- Only new files are uploaded; existing files are skipped (filename-based duplicate detection)
+- **Important**: Duplicate detection is based on filename only, not full path. If `readme.txt` exists anywhere in the bucket, all local `readme.txt` files will be skipped regardless of their location
 - Shows pre-upload analysis with file counts and sizes
 
 **Example workflow:**
-1. Script scans the S3 bucket to get existing files
+1. Script scans the S3 bucket to get existing filenames (basenames only)
 2. Script scans your local directory
-3. Compares and shows what will be uploaded vs skipped
+3. Compares filenames and shows what will be uploaded vs skipped
 4. Asks for confirmation
-5. Uploads only new files
+5. Uploads only files with new filenames
 
 ### Delete All Objects from Bucket
 
@@ -338,12 +340,15 @@ MIGRATE_DELETE_SOURCE=false  # Set to true for move instead of copy
 ### Upload Process
 
 1. Reads configuration from `.env` file
-2. **Scans R2 bucket** to get list of existing files (in-memory set)
+2. **Scans R2 bucket** to get list of existing filenames (basenames only, in-memory set)
 3. **Scans local directory** to build list of files to process
-4. **Compares** local vs remote and identifies new files
-5. Shows analysis: how many files to upload vs skip
-6. Uploads only new files with correct content-type
-7. Reports detailed statistics (uploaded, skipped, sizes)
+4. **Compares** local filenames vs remote filenames (ignores paths)
+5. Clears memory of remote filenames after determining upload list
+6. Shows analysis: how many files to upload vs skip
+7. Uploads only files with new filenames with correct content-type
+8. Reports detailed statistics (uploaded, skipped, sizes)
+
+**Note**: Duplicate detection is filename-based. If a file named `readme.txt` exists anywhere in the bucket, all local `readme.txt` files will be skipped regardless of their path.
 
 ### Delete Process
 
@@ -386,11 +391,11 @@ Upload Configuration:
 Start upload? (yes/no): yes
 
 ============================================================
-Incremental Upload - Skipping existing files
+Incremental Upload - Filename-based duplicate detection
 ============================================================
 
 Scanning R2 bucket: my-bucket...
-Found 100 existing objects in bucket
+Found 100 existing objects (95 unique filenames) in bucket
 
 Scanning local directory: /Users/username/Downloads/source...
 Found 200 local files
@@ -398,8 +403,9 @@ Found 200 local files
 ============================================================
 Analysis:
   Total local files: 200
-  New files to upload: 100 (22.5 MB)
-  Existing files (will skip): 100 (22.73 MB)
+  New files to upload: 105 (22.5 MB)
+  Existing files (will skip): 95 (22.73 MB)
+  Note: Duplicate detection is filename-based (ignores path)
 ============================================================
 
 Starting upload to: my-bucket/source
@@ -411,8 +417,8 @@ Uploading: folder1/newfile.txt -> source/folder1/newfile.txt
 
 ============================================================
 Upload complete!
-Successfully uploaded: 100 files (22.5 MB)
-Skipped (already exist): 100 files (22.73 MB)
+Successfully uploaded: 105 files (22.5 MB)
+Skipped (already exist): 95 files (22.73 MB)
 Total files processed: 200
 ============================================================
 ```

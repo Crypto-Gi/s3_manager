@@ -52,8 +52,11 @@ def get_content_type(file_path):
 
 def get_existing_objects(s3_client, bucket_name, prefix=''):
     """
-    Fetch all existing objects from R2 bucket and return as a set of keys.
+    Fetch all existing filenames from R2 bucket and return as a set of basenames.
     Uses pagination to handle large buckets.
+    
+    Note: This function extracts only the filename (basename) from each object key,
+    ignoring the full path. This means duplicate detection is filename-based only.
     
     Args:
         s3_client: Boto3 S3 client
@@ -61,10 +64,10 @@ def get_existing_objects(s3_client, bucket_name, prefix=''):
         prefix: Optional prefix to filter objects
         
     Returns:
-        set: Set of all object keys in the bucket
+        set: Set of all filenames (basenames) in the bucket
     """
     print(f"Scanning R2 bucket: {bucket_name}...")
-    existing_objects = set()
+    existing_filenames = set()
     
     try:
         # Use paginator to handle large number of objects
@@ -79,10 +82,13 @@ def get_existing_objects(s3_client, bucket_name, prefix=''):
         for page in pages:
             if 'Contents' in page:
                 for obj in page['Contents']:
-                    existing_objects.add(obj['Key'])
+                    # Extract only the filename (basename) from the full key
+                    filename = os.path.basename(obj['Key'])
+                    if filename:  # Skip empty basenames (directories)
+                        existing_filenames.add(filename)
                     object_count += 1
         
-        print(f"Found {object_count} existing objects in bucket\n")
+        print(f"Found {object_count} existing objects ({len(existing_filenames)} unique filenames) in bucket\n")
         
     except ClientError as e:
         if e.response['Error']['Code'] == 'NoSuchBucket':
@@ -91,7 +97,7 @@ def get_existing_objects(s3_client, bucket_name, prefix=''):
             print(f"Warning: Error listing bucket contents: {e}")
         print("Proceeding with upload (will upload all files)\n")
     
-    return existing_objects
+    return existing_filenames
 
 def build_local_file_list(source_dir, source_folder_name, prefix=''):
     """
@@ -133,7 +139,10 @@ def build_local_file_list(source_dir, source_folder_name, prefix=''):
 def upload_directory(source_dir, bucket_name, prefix='', dry_run=False):
     """
     Upload all files from source directory to R2 bucket maintaining hierarchy.
-    Only uploads files that don't already exist in the bucket.
+    Only uploads files whose filenames don't already exist in the bucket (filename-based duplicate detection).
+    
+    Note: Duplicate detection is based on filename only, not full path. If a file named "readme.txt"
+    exists anywhere in the bucket, all local "readme.txt" files will be skipped regardless of their path.
     
     Args:
         source_dir: Local directory path to upload
@@ -156,24 +165,29 @@ def upload_directory(source_dir, bucket_name, prefix='', dry_run=False):
     source_folder_name = source_path.name
     
     print(f"{'='*60}")
-    print(f"Incremental Upload - Skipping existing files{' (DRY RUN)' if dry_run else ''}")
+    print(f"Incremental Upload - Filename-based duplicate detection{' (DRY RUN)' if dry_run else ''}")
     print(f"{'='*60}\n")
     
-    # Step 1: Get existing objects from R2
-    existing_objects = get_existing_objects(s3_client, bucket_name, prefix)
+    # Step 1: Get existing filenames from R2
+    existing_filenames = get_existing_objects(s3_client, bucket_name, prefix)
     
     # Step 2: Build local file list
     local_files = build_local_file_list(source_dir, source_folder_name, prefix)
     
-    # Step 3: Determine which files need to be uploaded
+    # Step 3: Determine which files need to be uploaded (compare by filename only)
     files_to_upload = []
     files_to_skip = []
     
     for local_path, s3_key, file_size in local_files:
-        if s3_key in existing_objects:
+        filename = os.path.basename(local_path)
+        if filename in existing_filenames:
             files_to_skip.append((local_path, s3_key, file_size))
         else:
             files_to_upload.append((local_path, s3_key, file_size))
+    
+    # Clear memory of existing filenames set (no longer needed)
+    existing_filenames.clear()
+    del existing_filenames
     
     # Calculate statistics
     total_upload_size = sum(size for _, _, size in files_to_upload)
@@ -185,10 +199,11 @@ def upload_directory(source_dir, bucket_name, prefix='', dry_run=False):
     print(f"  Total local files: {len(local_files)}")
     print(f"  New files to upload: {len(files_to_upload)} ({format_size(total_upload_size)})")
     print(f"  Existing files (will skip): {len(files_to_skip)} ({format_size(total_skip_size)})")
+    print(f"  Note: Duplicate detection is filename-based (ignores path)")
     print(f"{'='*60}\n")
     
     if len(files_to_upload) == 0:
-        print("All files already exist in bucket. Nothing to upload!")
+        print("All files already exist in bucket (by filename). Nothing to upload!")
         return
     
     # Counters
