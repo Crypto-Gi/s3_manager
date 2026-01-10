@@ -1,425 +1,222 @@
 # S3-Compatible Storage Manager
 
-Python scripts to manage S3-compatible object storage buckets using boto3. Works with **Cloudflare R2**, **AWS S3**, **MinIO**, **DigitalOcean Spaces**, **Wasabi**, **Backblaze B2**, and any other S3-compatible storage service.
+A powerful Python toolkit for managing S3-compatible object storage with intelligent duplicate detection, batch operations, and cross-bucket migration.
 
-## Features
+[![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-### 📤 Upload Script (`upload_to_r2.py`)
-- **Hybrid duplicate detection**: Combines filename-based filtering with xxhash content verification
-- **Content-based verification**: Computes xxhash64 of files to detect true duplicates
-- **Smart filtering**: First checks filename, then verifies content hash only for matches
-- **Metadata storage**: Stores xxhash in S3 object metadata for future comparisons
-- **Incremental uploads**: Only uploads new or modified files
-- **Recursive upload**: Uploads entire directory structure
-- **Hierarchy preservation**: Maintains folder structure in the bucket
-- **Content-type detection**: Automatically sets correct MIME types based on file extensions
-- **Pre-scan analysis**: Shows what will be uploaded vs skipped before starting
-- **Progress tracking**: Shows each file being uploaded with size, type, and hash
-- **Memory efficient**: Uses ~30MB for 100K files, clears memory after analysis
-- **Error handling**: Reports failures and continues with remaining files
-- **Detailed statistics**: Shows uploaded count, skipped count, hash verifications, and sizes
+## 🚀 Quick Start
 
-### 🗑️ Delete Script (`delete_r2_bucket.py`)
-- **Batch deletion**: Deletes up to 1000 objects per API call for efficiency
-- **Pagination support**: Handles buckets with any number of objects
-- **Prefix filtering**: Optional prefix filter using `R2_PREFIX` environment variable
-- **Safety confirmation**: Requires explicit "yes" confirmation before deletion
-- **Detailed logging**: Shows progress and reports any errors
-- **Error handling**: Gracefully handles API errors and reports failures
+```bash
+# Clone the repository
+git clone https://github.com/Crypto-Gi/S3-Compatible-Storage-Manager.git
+cd S3-Compatible-Storage-Manager
 
-### 📦 Move Script (`move_r2_directory.py`)
-- **Directory relocation**: Move entire directories within the same bucket
-- **Preserves structure**: Maintains all subdirectories and files
-- **Copy-then-delete**: Safely copies objects before deleting originals
-- **Preview mode**: Shows what will be moved before execution
-- **Batch operations**: Handles any number of objects efficiently
-- **Progress tracking**: Shows each object being moved
-- **Error handling**: Reports failures and continues with remaining objects
+# Install dependencies
+pip install -r requirements.txt
 
-### 🎯 Pattern Deletion Script (`delete_by_pattern.py`)
-- **Selective deletion**: Delete files by extension or filename pattern
-- **Flexible filtering**: Combine extensions and patterns for precise targeting
-- **Dry run mode**: Preview what will be deleted without actually deleting
-- **Batch operations**: Efficiently deletes up to 1000 objects per request
-- **Safety confirmation**: Requires typing 'DELETE' to proceed
-- **Detailed preview**: Shows matching files before deletion
-- **Progress tracking**: Reports each deleted file and any errors
+# Configure credentials
+cp env.example .env
+# Edit .env with your credentials
 
-### 🔄 Bucket Migration Script (`migrate_bucket.py`)
-- **Server-side copy**: Copy between buckets without downloading (fast!)
-- **No bandwidth usage**: Data never leaves the cloud provider's network
-- **Preserve structure**: Maintains all folder hierarchies and files
-- **Copy or migrate**: Option to delete from source after copying
-- **Prefix filtering**: Migrate only specific directories
-- **Progress tracking**: Shows each object being copied
-- **Error handling**: Reports failures and continues with remaining objects
+# Upload files
+python3 upload_to_r2.py
+```
 
-## Prerequisites
+## ✨ Key Features
 
-### Python Version
-- Python 3.6 or higher (uses f-strings)
+- **🔍 Smart Duplicate Detection** - Hybrid filename + xxhash64 content verification
+- **⚡ High Performance** - Batch operations, incremental uploads, server-side copies
+- **🔒 Safe Operations** - Confirmation prompts, dry-run mode, detailed previews
+- **🌐 Universal Compatibility** - Works with any S3-compatible storage
+- **📊 Detailed Reporting** - Progress tracking, statistics, error handling
 
-### Installation
+## 📦 Supported Storage Providers
 
-**Option 1: Using requirements.txt (recommended)**
+| Provider | Status | Endpoint Example |
+|----------|--------|------------------|
+| Cloudflare R2 | ✅ Tested | `{account_id}.r2.cloudflarestorage.com` |
+| AWS S3 | ✅ Tested | `s3.amazonaws.com` |
+| MinIO | ✅ Tested | `your-server.com:9000` |
+| DigitalOcean Spaces | ✅ Tested | `nyc3.digitaloceanspaces.com` |
+| Wasabi | ✅ Tested | `s3.wasabisys.com` |
+| Backblaze B2 | ✅ Tested | `s3.us-west-001.backblazeb2.com` |
+| Any S3-compatible | ✅ Compatible | Custom endpoint |
+
+---
+
+## 📚 Table of Contents
+
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [Scripts](#-scripts)
+  - [Upload Script](#1-upload-script)
+  - [Delete Script](#2-delete-script)
+  - [Move Script](#3-move-script)
+  - [Pattern Delete Script](#4-pattern-delete-script)
+  - [Bucket Migration Script](#5-bucket-migration-script)
+- [Advanced Usage](#-advanced-usage)
+- [Performance](#-performance)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+
+---
+
+## 🔧 Installation
+
+### Requirements
+- Python 3.6 or higher
+- pip package manager
+
+### Setup
+
+**1. Install dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
 
-**Option 2: Manual installation**
-```bash
-pip install boto3 python-dotenv xxhash
-```
-
-### Dependencies
-- `boto3` - AWS SDK for Python (S3 API client)
+**Dependencies:**
+- `boto3` - AWS SDK for Python
 - `python-dotenv` - Environment variable management
 - `xxhash` - Fast hash function for duplicate detection
 
-## Configuration
-
-Create a `.env` file in the project root with your S3-compatible storage credentials. You can use the provided `env.example` as a template:
-
+**2. Configure credentials:**
 ```bash
 cp env.example .env
 ```
 
-Then edit `.env` with your credentials:
-
+Edit `.env` with your storage credentials:
 ```env
 R2_ACCOUNT_ID=your_account_id_or_endpoint
 R2_ACCESS_KEY_ID=your_access_key_id
 R2_SECRET_ACCESS_KEY=your_secret_access_key
 R2_BUCKET=your_bucket_name
-R2_PREFIX=
 R2_SOURCE_DIR=/path/to/your/source/directory
 ```
 
-### S3-Compatible Service Configuration
+---
 
-The scripts work with any S3-compatible storage by modifying the endpoint URL in the code. Here's how to configure for different services:
+## ⚙️ Configuration
 
-#### Cloudflare R2
+### Provider-Specific Setup
+
+<details>
+<summary><b>Cloudflare R2</b></summary>
+
 ```env
 R2_ACCOUNT_ID=your_cloudflare_account_id
 R2_ACCESS_KEY_ID=your_r2_access_key
 R2_SECRET_ACCESS_KEY=your_r2_secret_key
 ```
-Endpoint format: `https://{account_id}.r2.cloudflarestorage.com`
 
-**Getting R2 Credentials:**
-1. Log in to Cloudflare dashboard
-2. Go to R2 → Overview
-3. Create an API token with R2 read/write permissions
-4. Copy your Account ID, Access Key ID, and Secret Access Key
+**Getting credentials:**
+1. Log in to Cloudflare Dashboard
+2. Navigate to R2 → Overview
+3. Create API token with R2 read/write permissions
+4. Copy Account ID, Access Key ID, and Secret Access Key
 
-#### AWS S3
+</details>
+
+<details>
+<summary><b>AWS S3</b></summary>
+
 ```env
 R2_ACCOUNT_ID=s3.amazonaws.com  # or s3.region.amazonaws.com
 R2_ACCESS_KEY_ID=your_aws_access_key
 R2_SECRET_ACCESS_KEY=your_aws_secret_key
 ```
-Endpoint format: `https://s3.amazonaws.com` or `https://s3.{region}.amazonaws.com`
 
-#### MinIO
+</details>
+
+<details>
+<summary><b>MinIO</b></summary>
+
 ```env
 R2_ACCOUNT_ID=your-minio-server.com:9000
 R2_ACCESS_KEY_ID=your_minio_access_key
 R2_SECRET_ACCESS_KEY=your_minio_secret_key
 ```
-Endpoint format: `https://your-minio-server.com:9000`
 
-#### DigitalOcean Spaces
+</details>
+
+<details>
+<summary><b>DigitalOcean Spaces</b></summary>
+
 ```env
-R2_ACCOUNT_ID=nyc3.digitaloceanspaces.com  # or your region
+R2_ACCOUNT_ID=nyc3.digitaloceanspaces.com
 R2_ACCESS_KEY_ID=your_spaces_access_key
 R2_SECRET_ACCESS_KEY=your_spaces_secret_key
 ```
-Endpoint format: `https://{region}.digitaloceanspaces.com`
 
-#### Wasabi
-```env
-R2_ACCOUNT_ID=s3.wasabisys.com  # or s3.region.wasabisys.com
-R2_ACCESS_KEY_ID=your_wasabi_access_key
-R2_SECRET_ACCESS_KEY=your_wasabi_secret_key
-```
-Endpoint format: `https://s3.wasabisys.com` or `https://s3.{region}.wasabisys.com`
+</details>
 
-#### Backblaze B2
-```env
-R2_ACCOUNT_ID=s3.us-west-001.backblazeb2.com  # or your region
-R2_ACCESS_KEY_ID=your_b2_key_id
-R2_SECRET_ACCESS_KEY=your_b2_application_key
-```
-Endpoint format: `https://s3.{region}.backblazeb2.com`
+<details>
+<summary><b>Other Providers</b></summary>
 
-### Custom Endpoint Configuration
+For other S3-compatible services, modify the endpoint URL in the scripts:
 
-To use a different S3-compatible service, modify the endpoint URL in both scripts:
-
-**In `upload_to_r2.py` and `delete_r2_bucket.py`**, find this line:
 ```python
+# Find this line in the script:
 endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+
+# Replace with your endpoint:
+endpoint_url = "https://your-custom-endpoint.com"
 ```
 
-Replace it with your service's endpoint:
-```python
-# For AWS S3
-endpoint_url = f"https://{account_id}"
+</details>
 
-# For MinIO
-endpoint_url = f"https://{account_id}"
+---
 
-# For any custom endpoint
-endpoint_url = "https://your-custom-s3-endpoint.com"
-```
+## 📜 Scripts
 
-## Usage
+### 1. Upload Script
 
-### Upload Directory to S3-Compatible Storage
+**`upload_to_r2.py`** - Intelligent file upload with hybrid duplicate detection
 
-Upload all files from your source directory while maintaining the folder structure:
+#### Features
+- ✅ Hybrid duplicate detection (filename + content hash)
+- ✅ Incremental uploads (only new/modified files)
+- ✅ Preserves directory structure
+- ✅ Automatic content-type detection
+- ✅ xxhash64 metadata storage
+- ✅ Pre-upload analysis
+- ✅ CLI arguments support
 
+#### Usage
+
+**Basic:**
 ```bash
 python3 upload_to_r2.py
 ```
 
-Or use the helper script:
-
+**With CLI arguments:**
 ```bash
-./run_upload.sh
+# Dry run (preview only)
+python3 upload_to_r2.py --dry-run
+
+# Override source directory
+python3 upload_to_r2.py --source /path/to/files
+
+# Override bucket
+python3 upload_to_r2.py --bucket my-other-bucket
+
+# Override destination prefix
+python3 upload_to_r2.py --destination my-folder
 ```
 
-**How it works:**
-- Local path: `/Users/username/Downloads/source`
-- Bucket structure: `bucket-name/source/folder1/file.txt`
-- The source folder name is automatically included as the root folder in the bucket
-- **Hybrid duplicate detection** (filename + content hash):
-  1. First checks if filename exists in bucket (fast)
-  2. If filename exists, computes xxhash64 of local file
-  3. Retrieves xxhash from R2 object metadata
-  4. Compares hashes - only skips if both filename AND content match
-  5. Uploads files with new filenames or different content
-- **Important**: Files with same name but different content will be uploaded
-- Shows pre-upload analysis with file counts and sizes
+#### How It Works
 
-**Example workflow:**
-1. Script scans the S3 bucket to get existing filenames
-2. Script scans your local directory
-3. For files with matching names, computes and compares xxhash
-4. Shows analysis: files to upload vs skip, hash verifications performed
-5. Asks for confirmation
-6. Uploads only new or modified files with xxhash stored in metadata
-
-### Delete All Objects from Bucket
-
-Delete all objects from your S3-compatible bucket:
-
-```bash
-python3 delete_r2_bucket.py
-```
-
-Or use the helper script:
-
-```bash
-./run_delete.sh
-```
-
-⚠️ **Warning:** This permanently deletes all objects. Make sure you have backups if needed.
-
-**Safety features:**
-- Displays bucket name and prefix (if any) before deletion
-- Requires explicit "yes" confirmation
-- Shows progress for each deleted object
-- Reports any errors encountered
-
-### Move Directories Within Bucket
-
-Move directories to a new location within the same bucket:
-
-```bash
-python3 move_r2_directory.py
-```
-
-Or use the helper script:
-
-```bash
-./run_move.sh
-```
-
-**How it works:**
-- Copies all objects from source directory to destination
-- Deletes original objects after successful copy
-- Preserves complete directory structure and all files
-- Shows preview before moving
-
-**Example:**
-- Move `source/ecos-release-notes/` → `source/HPE Aruba/ecos-release-notes/`
-- Move `source/orch-release-notes/` → `source/HPE Aruba/orch-release-notes/`
-
-**Configuration via .env:**
-```env
-MOVE_SOURCE_1=source/old-folder/
-MOVE_DEST_1=source/new-folder/
-MOVE_SOURCE_2=another/old-path/
-MOVE_DEST_2=another/new-path/
-```
-
-### Delete Files by Pattern
-
-Delete specific files by extension or filename pattern:
-
-```bash
-python3 delete_by_pattern.py
-```
-
-Or use the helper script:
-
-```bash
-./run_delete_pattern.sh
-```
-
-**How it works:**
-- Scans bucket for files matching your criteria
-- Shows preview of files to be deleted
-- Requires typing 'DELETE' to confirm
-- Deletes matching files in batches
-
-**Configuration via .env:**
-```env
-# Delete by file extension
-DELETE_EXTENSIONS=.DS_Store,.docx,.tmp,.bak
-
-# Delete by filename pattern (files containing these words)
-DELETE_PATTERNS=backup,temp,old,cache
-
-# Enable dry run mode (preview only, no deletion)
-DELETE_DRY_RUN=true
-```
-
-**Examples:**
-- Remove all `.DS_Store` files: `DELETE_EXTENSIONS=.DS_Store`
-- Remove backup files: `DELETE_PATTERNS=backup,bak`
-- Remove temp files: `DELETE_EXTENSIONS=.tmp,.temp` + `DELETE_PATTERNS=temp`
-- Preview mode: `DELETE_DRY_RUN=true`
-
-**Safety features:**
-- Dry run mode for safe testing
-- Shows preview of all matching files
-- Requires typing 'DELETE' (not just 'yes')
-- Detailed progress reporting
-
-### Migrate Between Buckets
-
-Copy or migrate all objects from one bucket to another **without downloading** (server-side copy):
-
-```bash
-python3 migrate_bucket.py
-```
-
-Or use the helper script:
-
-```bash
-./run_migrate.sh
-```
-
-**How it works:**
-- Lists all objects in source bucket
-- Copies each object directly to destination bucket (server-side)
-- Optionally deletes from source after successful copy
-- No data transfer through your computer (fast and free!)
-
-**Configuration via .env:**
-```env
-# Source and destination buckets
-MIGRATE_SOURCE_BUCKET=old-bucket-name
-MIGRATE_DEST_BUCKET=new-bucket-name
-
-# Optional: only migrate specific directory
-MIGRATE_PREFIX=source/specific-folder/
-
-# Optional: delete from source after copy (true migration)
-MIGRATE_DELETE_SOURCE=false  # Set to true for move instead of copy
-```
-
-**Use cases:**
-- **Rename bucket**: Copy to new bucket with desired name
-- **Backup bucket**: Create a copy in another bucket
-- **Reorganize**: Migrate to bucket with better structure
-- **Consolidate**: Merge multiple buckets into one
-
-**Advantages:**
-- ⚡ **Fast**: Server-side copy (no download/upload)
-- 💰 **Free**: No bandwidth charges
-- 🔒 **Safe**: Preserves all metadata and structure
-- 📊 **Progress tracking**: See each file being copied
-
-**Safety features:**
-- Shows preview of objects to migrate
-- Requires typing 'MIGRATE' to confirm
-- Copy mode by default (keeps source intact)
-- Detailed progress and error reporting
-
-## How It Works
-
-### Upload Process
-
-1. Reads configuration from `.env` file
-2. **Scans R2 bucket** to get list of existing filenames (in-memory dict mapping)
-3. **Scans local directory** to build list of files to process
-4. **Hybrid duplicate detection**:
+1. **Scans bucket** - Gets list of existing filenames
+2. **Scans local directory** - Builds list of files to process
+3. **Smart filtering**:
    - First checks if filename exists (fast)
-   - For matching filenames, computes xxhash64 of local file
-   - Retrieves xxhash from R2 object metadata using head_object()
-   - Compares hashes to determine if content is identical
-   - Only skips if both filename AND hash match
-5. Clears memory of filename mapping after determining upload list
-6. Shows analysis: files to upload vs skip, hash verifications performed
-7. Uploads new/modified files with xxhash stored in metadata
-8. Reports detailed statistics (uploaded, skipped, hash checks, sizes)
+   - For matches, computes xxhash64 of local file
+   - Retrieves xxhash from object metadata
+   - Compares hashes - only skips if both match
+4. **Uploads** - New or modified files with hash stored in metadata
 
-**Note**: Duplicate detection uses filename + content hash. Files with same name but different content will be uploaded. This ensures true duplicate detection based on actual file content.
-
-### Delete Process
-
-1. Lists all objects in the bucket (with optional prefix filter)
-2. Deletes objects in batches of up to 1000
-3. Handles pagination automatically
-4. Reports deleted objects and any errors
-
-### Move Process
-
-1. Lists all objects with the source prefix
-2. Shows preview of what will be moved
-3. Asks for confirmation
-4. For each object:
-   - Copies to new location (preserving path structure)
-   - Deletes original after successful copy
-5. Reports detailed statistics (moved count, errors)
-
-### Pattern Deletion Process
-
-1. Reads deletion criteria from .env (extensions and patterns)
-2. Scans bucket for all objects
-3. Filters objects matching criteria
-4. Shows preview of matching files
-5. Asks for confirmation (must type 'DELETE')
-6. Deletes matching files in batches
-7. Reports detailed statistics (deleted count, errors)
-
-## Examples
-
-### Upload Output
-
+**Example Output:**
 ```
-============================================================
-Upload Configuration:
-  Source: /Users/username/Downloads/source
-  Bucket: my-bucket
-============================================================
-
-Start upload? (yes/no): yes
-
 ============================================================
 Incremental Upload - Hybrid duplicate detection
 ============================================================
@@ -427,7 +224,7 @@ Incremental Upload - Hybrid duplicate detection
 Scanning R2 bucket: my-bucket...
 Found 100 existing objects (95 unique filenames) in bucket
 
-Scanning local directory: /Users/username/Downloads/source...
+Scanning local directory: /Users/user/Downloads/source...
 Found 200 local files
 
 Analyzing files for upload...
@@ -439,20 +236,11 @@ Analysis:
   New files to upload: 108 (23.1 MB)
   Existing files (will skip): 92 (22.5 MB)
   Hash verifications performed: 95
-  Note: Duplicate detection uses filename + xxhash verification
-============================================================
-
-Starting upload to: my-bucket/source
 ============================================================
 
 Uploading: folder1/newfile.txt -> source/folder1/newfile.txt
   Size: 1.25 KB, Type: text/plain
   xxhash: a1b2c3d4e5f67890
-  ✓ Uploaded successfully
-
-Uploading: docs/readme.txt -> source/docs/readme.txt
-  Size: 2.50 KB, Type: text/plain
-  xxhash: 9876543210fedcba
   ✓ Uploaded successfully
 
 ============================================================
@@ -463,117 +251,296 @@ Total files processed: 200
 ============================================================
 ```
 
-### Delete Output
+---
 
+### 2. Delete Script
+
+**`delete_r2_bucket.py`** - Batch delete all objects from a bucket
+
+#### Features
+- ✅ Batch deletion (1000 objects per API call)
+- ✅ Pagination support
+- ✅ Prefix filtering
+- ✅ Safety confirmation
+
+#### Usage
+
+```bash
+python3 delete_r2_bucket.py
 ```
-============================================================
-WARNING: This will delete ALL objects from bucket: my-bucket
-============================================================
 
-Are you sure you want to continue? (yes/no): yes
-Starting deletion process for bucket: my-bucket
-Deleting 150 objects...
-  ✓ Deleted: source/folder1/file1.txt
-  ✓ Deleted: source/folder2/image.jpg
-
-============================================================
-Deletion complete!
-Successfully deleted: 150 objects
-============================================================
+**Configuration:**
+```env
+R2_BUCKET=bucket-to-delete
+R2_PREFIX=optional/prefix/  # Optional: only delete objects with this prefix
 ```
 
-## Environment Variables
+⚠️ **Warning:** This permanently deletes objects. Ensure you have backups!
+
+---
+
+### 3. Move Script
+
+**`move_r2_directory.py`** - Move directories within the same bucket
+
+#### Features
+- ✅ Preserves directory structure
+- ✅ Copy-then-delete (safe operation)
+- ✅ Preview mode
+- ✅ Batch operations
+
+#### Usage
+
+```bash
+python3 move_r2_directory.py
+```
+
+**Configuration:**
+```env
+MOVE_SOURCE_1=source/old-folder/
+MOVE_DEST_1=source/new-folder/
+MOVE_SOURCE_2=another/old-path/
+MOVE_DEST_2=another/new-path/
+```
+
+**Example:**
+```
+Move: source/ecos-release-notes/ → source/HPE Aruba/ecos-release-notes/
+```
+
+---
+
+### 4. Pattern Delete Script
+
+**`delete_by_pattern.py`** - Delete files by extension or pattern
+
+#### Features
+- ✅ Delete by file extension
+- ✅ Delete by filename pattern
+- ✅ Dry run mode
+- ✅ Detailed preview
+- ✅ Safety confirmation (type 'DELETE')
+
+#### Usage
+
+```bash
+python3 delete_by_pattern.py
+```
+
+**Configuration:**
+```env
+# Delete by extension
+DELETE_EXTENSIONS=.DS_Store,.docx,.tmp
+
+# Delete by pattern (files containing these words)
+DELETE_PATTERNS=backup,temp,old
+
+# Dry run (preview only)
+DELETE_DRY_RUN=true
+```
+
+**Examples:**
+```bash
+# Remove all .DS_Store files
+DELETE_EXTENSIONS=.DS_Store
+
+# Remove backup files
+DELETE_PATTERNS=backup,bak
+
+# Preview mode
+DELETE_DRY_RUN=true
+```
+
+---
+
+### 5. Bucket Migration Script
+
+**`migrate_bucket.py`** - Server-side copy between buckets
+
+#### Features
+- ✅ Server-side copy (no download/upload)
+- ✅ Zero bandwidth usage
+- ✅ Preserves metadata and structure
+- ✅ Optional source deletion (true migration)
+- ✅ Prefix filtering
+
+#### Usage
+
+```bash
+python3 migrate_bucket.py
+```
+
+**Configuration:**
+```env
+MIGRATE_SOURCE_BUCKET=old-bucket
+MIGRATE_DEST_BUCKET=new-bucket
+MIGRATE_PREFIX=optional/folder/  # Optional
+MIGRATE_DELETE_SOURCE=false  # Set to true for move instead of copy
+```
+
+**Use Cases:**
+- 🔄 Rename bucket
+- 💾 Backup bucket
+- 📁 Reorganize structure
+- 🔗 Consolidate buckets
+
+**Advantages:**
+- ⚡ Fast (server-side copy)
+- 💰 Free (no bandwidth charges)
+- 🔒 Safe (preserves metadata)
+
+---
+
+## 🎯 Advanced Usage
+
+### Environment Variables Reference
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `R2_ACCOUNT_ID` | Yes | S3 endpoint hostname or account ID (e.g., `account.r2.cloudflarestorage.com`, `s3.amazonaws.com`, `minio.example.com`) |
-| `R2_ACCESS_KEY_ID` | Yes | S3 API access key ID |
-| `R2_SECRET_ACCESS_KEY` | Yes | S3 API secret access key |
-| `R2_BUCKET` | Yes | Name of the S3 bucket |
-| `R2_SOURCE_DIR` | Yes (upload) | Local directory path to upload |
-| `R2_PREFIX` | No | Optional prefix to filter/organize objects |
-| `MOVE_SOURCE_N` | No | Source directory for move operation (N=1,2,3...) |
-| `MOVE_DEST_N` | No | Destination directory for move operation (N=1,2,3...) |
-| `DELETE_EXTENSIONS` | No | Comma-separated file extensions to delete (e.g., `.DS_Store,.tmp`) |
-| `DELETE_PATTERNS` | No | Comma-separated patterns to match in filenames (e.g., `backup,temp`) |
-| `DELETE_DRY_RUN` | No | Set to `true` for preview mode (no actual deletion) |
-| `MIGRATE_SOURCE_BUCKET` | No | Source bucket name for migration |
-| `MIGRATE_DEST_BUCKET` | No | Destination bucket name for migration |
-| `MIGRATE_PREFIX` | No | Optional prefix to filter objects for migration |
-| `MIGRATE_DELETE_SOURCE` | No | Set to `true` to delete from source after copy (default: `false`) |
+| `R2_ACCOUNT_ID` | ✅ | Endpoint hostname or account ID |
+| `R2_ACCESS_KEY_ID` | ✅ | API access key ID |
+| `R2_SECRET_ACCESS_KEY` | ✅ | API secret access key |
+| `R2_BUCKET` | ✅ | Bucket name |
+| `R2_SOURCE_DIR` | Upload only | Local directory path |
+| `R2_PREFIX` | ❌ | Optional prefix filter |
+| `MOVE_SOURCE_N` | Move only | Source directory (N=1,2,3...) |
+| `MOVE_DEST_N` | Move only | Destination directory (N=1,2,3...) |
+| `DELETE_EXTENSIONS` | Pattern delete | File extensions to delete |
+| `DELETE_PATTERNS` | Pattern delete | Filename patterns to match |
+| `DELETE_DRY_RUN` | Pattern delete | Preview mode (true/false) |
+| `MIGRATE_SOURCE_BUCKET` | Migration only | Source bucket name |
+| `MIGRATE_DEST_BUCKET` | Migration only | Destination bucket name |
+| `MIGRATE_PREFIX` | Migration only | Optional prefix filter |
+| `MIGRATE_DELETE_SOURCE` | Migration only | Delete source after copy |
 
-**Note:** Despite the `R2_` prefix in variable names (for historical reasons), these work with any S3-compatible service.
+### Helper Scripts
 
-## Compatibility
+Convenience shell scripts are provided:
 
-✅ **Tested with:**
-- Cloudflare R2
-- AWS S3
-- MinIO
-- DigitalOcean Spaces
-- Wasabi
-- Backblaze B2
+```bash
+./run_upload.sh          # Upload files
+./run_delete.sh          # Delete all objects
+./run_move.sh            # Move directories
+./run_delete_pattern.sh  # Delete by pattern
+./run_migrate.sh         # Migrate buckets
+```
 
-✅ **Should work with any S3-compatible storage** that supports:
-- S3 API v2 (ListObjectsV2)
-- Standard S3 authentication
-- PutObject and DeleteObjects operations
+---
 
-## Performance & Scalability
+## ⚡ Performance
 
 ### Memory Usage
-- **100,000 files**: ~30 MB RAM
-- **1,000,000 files**: ~150 MB RAM
-- **5,000,000 files**: ~750 MB RAM
+| Files | RAM Usage |
+|-------|-----------|
+| 100K | ~30 MB |
+| 1M | ~150 MB |
+| 5M | ~750 MB |
 
-The in-memory comparison approach is efficient and works well even with millions of files on modern systems.
+### Upload Performance
+- **Incremental**: Only uploads new/modified files
+- **Hash verification**: Only for filename matches
+- **Example**: 100K files with 1K matches = ~1K API calls (vs 100K for full scan)
 
-### Upload Speed
-- Depends on your internet connection and file sizes
-- Incremental uploads save significant time on subsequent runs
-- Only new files are uploaded, skipping existing ones
+### xxhash64 Speed
+- **5-13 GB/s** depending on system
+- Extremely fast, minimal overhead
 
-### Batch Operations
-- Delete operations handle up to 1000 objects per API call
-- Automatic pagination for buckets with any number of objects
+---
 
-## Important Notes
+## 🐛 Troubleshooting
 
-- **Python 3.6+** required (uses f-strings)
-- **xxhash library** required for content-based duplicate detection
-- Use `python3` command (not `python`) if you have Python 2.x installed
-- The upload script preserves the source folder name as the root in the bucket
-- Content types are automatically detected based on file extensions
-- **Duplicate detection**: Uses filename + xxhash64 content verification
-- **xxhash metadata**: Stored with each uploaded object for future comparisons
-- Files with same name but different content will be uploaded (not skipped)
-- Both scripts require explicit confirmation before executing
-- Works with any S3-compatible storage service - just change the endpoint URL
-- Variable names use `R2_` prefix for historical reasons, but work with any S3 service
+### Common Issues
 
-## Use Cases
+<details>
+<summary><b>ImportError: No module named 'xxhash'</b></summary>
 
-- **Backup and sync**: Incrementally backup local directories to cloud storage
-- **Static site deployment**: Upload website files to S3/R2 for hosting
-- **Data migration**: Transfer files between different S3-compatible services
-- **Bulk operations**: Efficiently manage large numbers of files
-- **Multi-cloud**: Use the same scripts across different cloud providers
-- **Directory reorganization**: Restructure your bucket by moving directories
-- **Folder consolidation**: Move multiple directories under a common parent
+**Solution:**
+```bash
+pip install xxhash
+```
 
-## License
+</details>
 
-MIT
+<details>
+<summary><b>SyntaxError: invalid syntax (f-strings)</b></summary>
 
-## Contributing
+**Cause:** Python version < 3.6
 
-Contributions are welcome! Feel free to open issues or submit pull requests.
+**Solution:**
+```bash
+python3 --version  # Check version
+# Upgrade to Python 3.6+
+```
 
-## Version History
+</details>
 
-- **v0.6** - Hybrid duplicate detection (filename + xxhash content verification)
-- **v0.5** - Filename-based duplicate detection
-- **v0.4** - CLI arguments for upload script
-- **v0.3** - Move directory script (relocate directories within bucket)
-- **v0.2** - Incremental upload feature (skip existing files)
-- **v0.1** - Initial release
+<details>
+<summary><b>ClientError: NoSuchBucket</b></summary>
+
+**Cause:** Bucket doesn't exist or incorrect credentials
+
+**Solution:**
+1. Verify bucket name in `.env`
+2. Check credentials are correct
+3. Ensure bucket exists in your account
+
+</details>
+
+<details>
+<summary><b>Files not being skipped despite existing</b></summary>
+
+**Cause:** Old uploads without xxhash metadata
+
+**Solution:** Script will re-upload to add hash metadata. This is expected behavior for first run after upgrading to v0.6.
+
+</details>
+
+---
+
+## 📊 Version History
+
+| Version | Date | Description |
+|---------|------|-------------|
+| **v0.6** | 2025-01-10 | Hybrid duplicate detection (filename + xxhash) |
+| **v0.5** | 2025-01-10 | Filename-based duplicate detection |
+| **v0.4** | 2024-11-25 | CLI arguments for upload script |
+| **v0.3** | 2024-11-25 | Move directory script |
+| **v0.2** | 2024-11-08 | Incremental upload feature |
+| **v0.1** | 2024-11-08 | Initial release |
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- Built with [boto3](https://github.com/boto/boto3) - AWS SDK for Python
+- Uses [xxhash](https://github.com/ifduyue/python-xxhash) for fast content hashing
+- Inspired by the need for efficient S3-compatible storage management
+
+---
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/Crypto-Gi/S3-Compatible-Storage-Manager/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Crypto-Gi/S3-Compatible-Storage-Manager/discussions)
+
+---
+
+**Made with ❤️ for the cloud storage community**
