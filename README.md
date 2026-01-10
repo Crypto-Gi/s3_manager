@@ -56,9 +56,25 @@ Python scripts to manage S3-compatible object storage buckets using boto3. Works
 
 ## Prerequisites
 
+### Python Version
+- Python 3.6 or higher (uses f-strings)
+
+### Installation
+
+**Option 1: Using requirements.txt (recommended)**
+```bash
+pip install -r requirements.txt
+```
+
+**Option 2: Manual installation**
 ```bash
 pip install boto3 python-dotenv xxhash
 ```
+
+### Dependencies
+- `boto3` - AWS SDK for Python (S3 API client)
+- `python-dotenv` - Environment variable management
+- `xxhash` - Fast hash function for duplicate detection
 
 ## Configuration
 

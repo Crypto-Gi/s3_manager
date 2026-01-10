@@ -1,0 +1,11 @@
+# S3-Compatible Storage Manager Dependencies
+# Install with: pip install -r requirements.txt
+
+# AWS SDK for Python - S3 API client
+boto3>=1.26.0
+
+# Environment variable management
+python-dotenv>=1.0.0
+
+# Fast non-cryptographic hash function for duplicate detection
+xxhash>=3.0.0
