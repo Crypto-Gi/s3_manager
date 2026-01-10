@@ -5,6 +5,8 @@ Maintains the folder hierarchy in the bucket.
 
 Note: This script requires Python 3.6+ (uses f-strings)
 Run with: python3 upload_to_r2.py
+
+Dependencies: pip install boto3 python-dotenv xxhash
 """
 
 import os
@@ -14,6 +16,12 @@ from pathlib import Path
 import boto3
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
+
+try:
+    import xxhash
+except ImportError:
+    print("Error: xxhash library not found. Install it with: pip install xxhash")
+    sys.exit(1)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -50,13 +58,35 @@ def get_content_type(file_path):
     content_type, _ = mimetypes.guess_type(file_path)
     return content_type or 'application/octet-stream'
 
+def compute_file_hash(file_path):
+    """
+    Compute xxhash64 of a file for duplicate detection.
+    Uses incremental hashing for memory efficiency with large files.
+    
+    Args:
+        file_path: Path to the file to hash
+        
+    Returns:
+        str: Hexadecimal hash string
+    """
+    hasher = xxhash.xxh64()
+    try:
+        with open(file_path, 'rb') as f:
+            # Read file in chunks for memory efficiency
+            for chunk in iter(lambda: f.read(65536), b''):  # 64KB chunks
+                hasher.update(chunk)
+        return hasher.hexdigest()
+    except Exception as e:
+        print(f"Warning: Could not compute hash for {file_path}: {e}")
+        return None
+
 def get_existing_objects(s3_client, bucket_name, prefix=''):
     """
-    Fetch all existing filenames from R2 bucket and return as a set of basenames.
+    Fetch all existing objects from R2 bucket and return as a dict mapping filename to key.
     Uses pagination to handle large buckets.
     
-    Note: This function extracts only the filename (basename) from each object key,
-    ignoring the full path. This means duplicate detection is filename-based only.
+    Note: This function extracts the filename (basename) from each object key and maps it
+    to the full S3 key path. This enables filename-based lookup for duplicate detection.
     
     Args:
         s3_client: Boto3 S3 client
@@ -64,10 +94,10 @@ def get_existing_objects(s3_client, bucket_name, prefix=''):
         prefix: Optional prefix to filter objects
         
     Returns:
-        set: Set of all filenames (basenames) in the bucket
+        dict: Dictionary mapping filename (basename) to full S3 key
     """
     print(f"Scanning R2 bucket: {bucket_name}...")
-    existing_filenames = set()
+    filename_to_key = {}
     
     try:
         # Use paginator to handle large number of objects
@@ -82,13 +112,14 @@ def get_existing_objects(s3_client, bucket_name, prefix=''):
         for page in pages:
             if 'Contents' in page:
                 for obj in page['Contents']:
-                    # Extract only the filename (basename) from the full key
+                    # Extract filename (basename) from the full key
                     filename = os.path.basename(obj['Key'])
                     if filename:  # Skip empty basenames (directories)
-                        existing_filenames.add(filename)
+                        # Store mapping of filename to full key
+                        filename_to_key[filename] = obj['Key']
                     object_count += 1
         
-        print(f"Found {object_count} existing objects ({len(existing_filenames)} unique filenames) in bucket\n")
+        print(f"Found {object_count} existing objects ({len(filename_to_key)} unique filenames) in bucket\n")
         
     except ClientError as e:
         if e.response['Error']['Code'] == 'NoSuchBucket':
@@ -97,7 +128,27 @@ def get_existing_objects(s3_client, bucket_name, prefix=''):
             print(f"Warning: Error listing bucket contents: {e}")
         print("Proceeding with upload (will upload all files)\n")
     
-    return existing_filenames
+    return filename_to_key
+
+def get_file_hash_from_metadata(s3_client, bucket_name, object_key):
+    """
+    Retrieve xxhash value from object metadata without downloading the file.
+    
+    Args:
+        s3_client: Boto3 S3 client
+        bucket_name: Name of the R2 bucket
+        object_key: Full S3 key of the object
+        
+    Returns:
+        str: xxhash value if found, None otherwise
+    """
+    try:
+        response = s3_client.head_object(Bucket=bucket_name, Key=object_key)
+        metadata = response.get('Metadata', {})
+        return metadata.get('xxhash')
+    except ClientError as e:
+        print(f"Warning: Could not retrieve metadata for {object_key}: {e}")
+        return None
 
 def build_local_file_list(source_dir, source_folder_name, prefix=''):
     """
@@ -139,10 +190,14 @@ def build_local_file_list(source_dir, source_folder_name, prefix=''):
 def upload_directory(source_dir, bucket_name, prefix='', dry_run=False):
     """
     Upload all files from source directory to R2 bucket maintaining hierarchy.
-    Only uploads files whose filenames don't already exist in the bucket (filename-based duplicate detection).
+    Uses hybrid duplicate detection: filename-based first, then hash-based verification.
     
-    Note: Duplicate detection is based on filename only, not full path. If a file named "readme.txt"
-    exists anywhere in the bucket, all local "readme.txt" files will be skipped regardless of their path.
+    Duplicate Detection Process:
+    1. Check if filename exists in bucket (fast)
+    2. If filename exists, compute xxhash of local file
+    3. Retrieve xxhash from R2 object metadata
+    4. Compare hashes - only skip if both filename AND hash match
+    5. Store xxhash in metadata when uploading new files
     
     Args:
         source_dir: Local directory path to upload
@@ -165,45 +220,75 @@ def upload_directory(source_dir, bucket_name, prefix='', dry_run=False):
     source_folder_name = source_path.name
     
     print(f"{'='*60}")
-    print(f"Incremental Upload - Filename-based duplicate detection{' (DRY RUN)' if dry_run else ''}")
+    print(f"Incremental Upload - Hybrid duplicate detection{' (DRY RUN)' if dry_run else ''}")
     print(f"{'='*60}\n")
     
-    # Step 1: Get existing filenames from R2
-    existing_filenames = get_existing_objects(s3_client, bucket_name, prefix)
+    # Step 1: Get existing objects from R2 (filename -> key mapping)
+    filename_to_key = get_existing_objects(s3_client, bucket_name, prefix)
     
     # Step 2: Build local file list
     local_files = build_local_file_list(source_dir, source_folder_name, prefix)
     
-    # Step 3: Determine which files need to be uploaded (compare by filename only)
+    # Step 3: Determine which files need to be uploaded (hybrid approach)
     files_to_upload = []
     files_to_skip = []
+    hash_checks_performed = 0
     
+    print("Analyzing files for upload...")
     for local_path, s3_key, file_size in local_files:
         filename = os.path.basename(local_path)
-        if filename in existing_filenames:
-            files_to_skip.append((local_path, s3_key, file_size))
-        else:
+        
+        # First check: Does filename exist in bucket?
+        if filename not in filename_to_key:
+            # Filename doesn't exist - definitely upload
             files_to_upload.append((local_path, s3_key, file_size))
+        else:
+            # Filename exists - check hash to verify if it's truly a duplicate
+            hash_checks_performed += 1
+            
+            # Compute local file hash
+            local_hash = compute_file_hash(local_path)
+            if local_hash is None:
+                # Could not compute hash - upload to be safe
+                files_to_upload.append((local_path, s3_key, file_size))
+                continue
+            
+            # Get hash from R2 object metadata
+            existing_key = filename_to_key[filename]
+            remote_hash = get_file_hash_from_metadata(s3_client, bucket_name, existing_key)
+            
+            if remote_hash is None:
+                # No hash in metadata (old upload) - upload to add hash
+                print(f"  Note: {filename} exists but has no hash metadata - will re-upload")
+                files_to_upload.append((local_path, s3_key, file_size))
+            elif local_hash == remote_hash:
+                # Hashes match - true duplicate, skip
+                files_to_skip.append((local_path, s3_key, file_size))
+            else:
+                # Hashes differ - same filename, different content, upload
+                print(f"  Note: {filename} exists but content differs (hash mismatch) - will upload")
+                files_to_upload.append((local_path, s3_key, file_size))
     
-    # Clear memory of existing filenames set (no longer needed)
-    existing_filenames.clear()
-    del existing_filenames
+    # Clear memory of filename mapping (no longer needed)
+    filename_to_key.clear()
+    del filename_to_key
     
     # Calculate statistics
     total_upload_size = sum(size for _, _, size in files_to_upload)
     total_skip_size = sum(size for _, _, size in files_to_skip)
     
     # Display analysis
-    print(f"{'='*60}")
+    print(f"\n{'='*60}")
     print(f"Analysis:")
     print(f"  Total local files: {len(local_files)}")
     print(f"  New files to upload: {len(files_to_upload)} ({format_size(total_upload_size)})")
     print(f"  Existing files (will skip): {len(files_to_skip)} ({format_size(total_skip_size)})")
-    print(f"  Note: Duplicate detection is filename-based (ignores path)")
+    print(f"  Hash verifications performed: {hash_checks_performed}")
+    print(f"  Note: Duplicate detection uses filename + xxhash verification")
     print(f"{'='*60}\n")
     
     if len(files_to_upload) == 0:
-        print("All files already exist in bucket (by filename). Nothing to upload!")
+        print("All files already exist in bucket with matching content. Nothing to upload!")
         return
     
     # Counters
@@ -226,23 +311,35 @@ def upload_directory(source_dir, bucket_name, prefix='', dry_run=False):
             # Determine content type
             content_type = get_content_type(local_file_path)
             
+            # Compute xxhash for metadata
+            file_hash = compute_file_hash(local_file_path)
+            
             if dry_run:
                 print(f"[DRY RUN] Would upload: {relative_path} -> {s3_key}")
                 print(f"  Size: {format_size(file_size)}, Type: {content_type}")
+                if file_hash:
+                    print(f"  xxhash: {file_hash}")
                 uploaded_count += 1
                 uploaded_size += file_size
                 print(f"  ✓ Simulation successful\n")
             else:
                 print(f"Uploading: {relative_path} -> {s3_key}")
                 print(f"  Size: {format_size(file_size)}, Type: {content_type}")
+                if file_hash:
+                    print(f"  xxhash: {file_hash}")
                 
-                # Upload the file
+                # Upload the file with xxhash in metadata
                 with open(local_file_path, 'rb') as file_data:
+                    metadata = {}
+                    if file_hash:
+                        metadata['xxhash'] = file_hash
+                    
                     s3_client.put_object(
                         Bucket=bucket_name,
                         Key=s3_key,
                         Body=file_data,
-                        ContentType=content_type
+                        ContentType=content_type,
+                        Metadata=metadata
                     )
                 
                 uploaded_count += 1

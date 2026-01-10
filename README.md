@@ -5,16 +5,19 @@ Python scripts to manage S3-compatible object storage buckets using boto3. Works
 ## Features
 
 ### 📤 Upload Script (`upload_to_r2.py`)
-- **Incremental uploads**: Only uploads new files, skips existing ones (filename-based duplicate detection)
-- **Filename-based detection**: Checks if filename exists anywhere in bucket, regardless of path
+- **Hybrid duplicate detection**: Combines filename-based filtering with xxhash content verification
+- **Content-based verification**: Computes xxhash64 of files to detect true duplicates
+- **Smart filtering**: First checks filename, then verifies content hash only for matches
+- **Metadata storage**: Stores xxhash in S3 object metadata for future comparisons
+- **Incremental uploads**: Only uploads new or modified files
 - **Recursive upload**: Uploads entire directory structure
 - **Hierarchy preservation**: Maintains folder structure in the bucket
 - **Content-type detection**: Automatically sets correct MIME types based on file extensions
 - **Pre-scan analysis**: Shows what will be uploaded vs skipped before starting
-- **Progress tracking**: Shows each file being uploaded with size and type
-- **Memory efficient**: Uses ~30MB for 100K files, ~750MB for 5M files, clears memory after analysis
+- **Progress tracking**: Shows each file being uploaded with size, type, and hash
+- **Memory efficient**: Uses ~30MB for 100K files, clears memory after analysis
 - **Error handling**: Reports failures and continues with remaining files
-- **Detailed statistics**: Shows uploaded count, skipped count, and sizes
+- **Detailed statistics**: Shows uploaded count, skipped count, hash verifications, and sizes
 
 ### 🗑️ Delete Script (`delete_r2_bucket.py`)
 - **Batch deletion**: Deletes up to 1000 objects per API call for efficiency
@@ -54,7 +57,7 @@ Python scripts to manage S3-compatible object storage buckets using boto3. Works
 ## Prerequisites
 
 ```bash
-pip install boto3 python-dotenv
+pip install boto3 python-dotenv xxhash
 ```
 
 ## Configuration
@@ -175,16 +178,22 @@ Or use the helper script:
 - Local path: `/Users/username/Downloads/source`
 - Bucket structure: `bucket-name/source/folder1/file.txt`
 - The source folder name is automatically included as the root folder in the bucket
-- Only new files are uploaded; existing files are skipped (filename-based duplicate detection)
-- **Important**: Duplicate detection is based on filename only, not full path. If `readme.txt` exists anywhere in the bucket, all local `readme.txt` files will be skipped regardless of their location
+- **Hybrid duplicate detection** (filename + content hash):
+  1. First checks if filename exists in bucket (fast)
+  2. If filename exists, computes xxhash64 of local file
+  3. Retrieves xxhash from R2 object metadata
+  4. Compares hashes - only skips if both filename AND content match
+  5. Uploads files with new filenames or different content
+- **Important**: Files with same name but different content will be uploaded
 - Shows pre-upload analysis with file counts and sizes
 
 **Example workflow:**
-1. Script scans the S3 bucket to get existing filenames (basenames only)
+1. Script scans the S3 bucket to get existing filenames
 2. Script scans your local directory
-3. Compares filenames and shows what will be uploaded vs skipped
-4. Asks for confirmation
-5. Uploads only files with new filenames
+3. For files with matching names, computes and compares xxhash
+4. Shows analysis: files to upload vs skip, hash verifications performed
+5. Asks for confirmation
+6. Uploads only new or modified files with xxhash stored in metadata
 
 ### Delete All Objects from Bucket
 
@@ -340,15 +349,20 @@ MIGRATE_DELETE_SOURCE=false  # Set to true for move instead of copy
 ### Upload Process
 
 1. Reads configuration from `.env` file
-2. **Scans R2 bucket** to get list of existing filenames (basenames only, in-memory set)
+2. **Scans R2 bucket** to get list of existing filenames (in-memory dict mapping)
 3. **Scans local directory** to build list of files to process
-4. **Compares** local filenames vs remote filenames (ignores paths)
-5. Clears memory of remote filenames after determining upload list
-6. Shows analysis: how many files to upload vs skip
-7. Uploads only files with new filenames with correct content-type
-8. Reports detailed statistics (uploaded, skipped, sizes)
+4. **Hybrid duplicate detection**:
+   - First checks if filename exists (fast)
+   - For matching filenames, computes xxhash64 of local file
+   - Retrieves xxhash from R2 object metadata using head_object()
+   - Compares hashes to determine if content is identical
+   - Only skips if both filename AND hash match
+5. Clears memory of filename mapping after determining upload list
+6. Shows analysis: files to upload vs skip, hash verifications performed
+7. Uploads new/modified files with xxhash stored in metadata
+8. Reports detailed statistics (uploaded, skipped, hash checks, sizes)
 
-**Note**: Duplicate detection is filename-based. If a file named `readme.txt` exists anywhere in the bucket, all local `readme.txt` files will be skipped regardless of their path.
+**Note**: Duplicate detection uses filename + content hash. Files with same name but different content will be uploaded. This ensures true duplicate detection based on actual file content.
 
 ### Delete Process
 
@@ -391,7 +405,7 @@ Upload Configuration:
 Start upload? (yes/no): yes
 
 ============================================================
-Incremental Upload - Filename-based duplicate detection
+Incremental Upload - Hybrid duplicate detection
 ============================================================
 
 Scanning R2 bucket: my-bucket...
@@ -400,12 +414,16 @@ Found 100 existing objects (95 unique filenames) in bucket
 Scanning local directory: /Users/username/Downloads/source...
 Found 200 local files
 
+Analyzing files for upload...
+  Note: readme.txt exists but content differs (hash mismatch) - will upload
+
 ============================================================
 Analysis:
   Total local files: 200
-  New files to upload: 105 (22.5 MB)
-  Existing files (will skip): 95 (22.73 MB)
-  Note: Duplicate detection is filename-based (ignores path)
+  New files to upload: 108 (23.1 MB)
+  Existing files (will skip): 92 (22.5 MB)
+  Hash verifications performed: 95
+  Note: Duplicate detection uses filename + xxhash verification
 ============================================================
 
 Starting upload to: my-bucket/source
@@ -413,12 +431,18 @@ Starting upload to: my-bucket/source
 
 Uploading: folder1/newfile.txt -> source/folder1/newfile.txt
   Size: 1.25 KB, Type: text/plain
+  xxhash: a1b2c3d4e5f67890
+  ✓ Uploaded successfully
+
+Uploading: docs/readme.txt -> source/docs/readme.txt
+  Size: 2.50 KB, Type: text/plain
+  xxhash: 9876543210fedcba
   ✓ Uploaded successfully
 
 ============================================================
 Upload complete!
-Successfully uploaded: 105 files (22.5 MB)
-Skipped (already exist): 95 files (22.73 MB)
+Successfully uploaded: 108 files (23.1 MB)
+Skipped (already exist): 92 files (22.5 MB)
 Total files processed: 200
 ============================================================
 ```
@@ -500,9 +524,13 @@ The in-memory comparison approach is efficient and works well even with millions
 ## Important Notes
 
 - **Python 3.6+** required (uses f-strings)
+- **xxhash library** required for content-based duplicate detection
 - Use `python3` command (not `python`) if you have Python 2.x installed
 - The upload script preserves the source folder name as the root in the bucket
 - Content types are automatically detected based on file extensions
+- **Duplicate detection**: Uses filename + xxhash64 content verification
+- **xxhash metadata**: Stored with each uploaded object for future comparisons
+- Files with same name but different content will be uploaded (not skipped)
 - Both scripts require explicit confirmation before executing
 - Works with any S3-compatible storage service - just change the endpoint URL
 - Variable names use `R2_` prefix for historical reasons, but work with any S3 service
@@ -527,8 +555,9 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 ## Version History
 
-- **v0.5** - Bucket migration script (server-side copy between buckets)
-- **v0.4** - Pattern-based deletion script (delete by extension/pattern)
+- **v0.6** - Hybrid duplicate detection (filename + xxhash content verification)
+- **v0.5** - Filename-based duplicate detection
+- **v0.4** - CLI arguments for upload script
 - **v0.3** - Move directory script (relocate directories within bucket)
 - **v0.2** - Incremental upload feature (skip existing files)
 - **v0.1** - Initial release

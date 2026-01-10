@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [v0.6] - 2025-01-10
+
+### Added
+- **Hybrid duplicate detection**: Combines filename-based filtering with xxhash content verification
+- **xxhash integration**: Computes xxhash64 for all uploaded files
+- **Metadata storage**: Stores xxhash in S3 object metadata for future comparisons
+- **Content verification**: Retrieves and compares hashes for files with matching names
+- **Smart filtering**: Only calls head_object() for files with matching filenames (performance optimization)
+
+### Changed
+- Upload script now uses hybrid approach: filename check first, then hash verification
+- Files with same name but different content will be uploaded (not skipped)
+- Added hash verification statistics to upload summary
+- Enhanced progress output to show xxhash values during upload
+
+### Technical Details
+- Added `compute_file_hash()` function using xxhash64 with 64KB chunks
+- Modified `get_existing_objects()` to return dict mapping filename→key
+- Added `get_file_hash_from_metadata()` to retrieve hashes via head_object()
+- Upload process now stores xxhash in Metadata parameter
+- Hash checks only performed for files with matching filenames (efficient)
+
+### Dependencies
+- Added `xxhash` library requirement (install via `pip install xxhash`)
+
+### Performance
+- Minimal performance impact: hash checks only for filename matches
+- For 100K files with 1K matches: ~1K head_object() calls (vs 100K for full hash scan)
+- xxhash64 is extremely fast: 5-13 GB/s depending on system
+
 ## [v0.5] - 2025-01-10
 
 ### Changed
